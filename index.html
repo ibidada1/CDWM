@@ -132,9 +132,9 @@ const STORAGE_KEY = "dine_game_state";
 
 const teams = [
   "BIG COOK little cook",
-  "Fork it, let’s eat",
   "His & Herbs",
-  "Spice girls"
+  "Spice girls",
+  "Fork it, let’s eat"
 ];
 
 const state = {
@@ -158,15 +158,11 @@ function loadState() {
   if (saved) Object.assign(state, JSON.parse(saved));
 }
 
-function shuffle(arr) {
-  return [...arr].sort(() => Math.random() - 0.5);
-}
-
 /* 🔥 FIXED: always resets game */
 function startGame() {
   localStorage.removeItem(STORAGE_KEY); // clear old data
 
-  state.hostsQueue = shuffle(teams);
+  state.hostsQueue = [...teams];
   state.currentHostIndex = 0;
   state.allResults = [];
   state.roundScores = [];
