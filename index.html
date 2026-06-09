@@ -155,17 +155,29 @@ function saveState() {
 
 function loadState() {
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) Object.assign(state, JSON.parse(saved));
+
+  if (!saved) return false;
+
+  try {
+    Object.assign(state, JSON.parse(saved));
+    return true;
+  } catch (err) {
+    console.error(err);
+    localStorage.removeItem(STORAGE_KEY);
+    return false;
+  }
 }
 
-/* 🔥 FIXED: always resets game */
 function startGame() {
-  localStorage.removeItem(STORAGE_KEY); // clear old data
-
   state.hostsQueue = [...teams];
   state.currentHostIndex = 0;
-  state.allResults = [];
+  state.voters = [];
+  state.currentVoterIndex = 0;
   state.roundScores = [];
+  state.allResults = [];
+  state.tempScore = null;
+  state.revealIndex = 0;
+  state.sortedResults = [];
 
   saveState();
   nextHost();
@@ -175,6 +187,7 @@ function nextHost() {
   if (state.currentHostIndex >= state.hostsQueue.length) {
     game.style.display = "none";
     revealBtnWrap.style.display = "block";
+    saveState();
     return;
   }
 
@@ -188,10 +201,19 @@ function nextHost() {
   game.style.display = "block";
 
   hostDisplay.textContent = `🍽️ Hosting: ${host}`;
+
+  saveState();
   renderTurn();
 }
 
 function renderTurn() {
+  if (
+    !state.voters ||
+    state.currentVoterIndex >= state.voters.length
+  ) {
+    return;
+  }
+
   const voter = state.voters[state.currentVoterIndex];
 
   turnDisplay.textContent =
@@ -203,13 +225,17 @@ function renderTurn() {
 
 function submitScore() {
   const val = parseInt(score.value);
-  if (val < 1 || val > 10) return;
+
+  if (isNaN(val) || val < 1 || val > 10) return;
 
   state.tempScore = val;
+
   privateScore.textContent = val;
 
   game.style.display = "none";
   revealScore.style.display = "flex";
+
+  saveState();
 }
 
 revealScore.onclick = () => {
@@ -218,6 +244,7 @@ revealScore.onclick = () => {
 
   state.roundScores.push(state.tempScore);
   state.currentVoterIndex++;
+  state.tempScore = null;
 
   saveState();
 
@@ -230,12 +257,19 @@ revealScore.onclick = () => {
 
 function finishRound() {
   const host = state.hostsQueue[state.currentHostIndex];
-  const total = state.roundScores.reduce((a,b) => a+b, 0);
 
-  state.allResults.push({ host, total });
+  const total =
+    state.roundScores.reduce((a, b) => a + b, 0);
+
+  state.allResults.push({
+    host,
+    total
+  });
+
   state.currentHostIndex++;
 
   saveState();
+
   nextHost();
 }
 
@@ -243,9 +277,14 @@ function revealResults() {
   revealBtnWrap.style.display = "none";
   final.style.display = "block";
 
-  state.sortedResults = [...state.allResults].sort((a,b) => a.total - b.total);
+  state.sortedResults = [...state.allResults]
+    .sort((a, b) => a.total - b.total);
+
   state.revealIndex = 0;
+
   leaderboard.innerHTML = "";
+
+  saveState();
 }
 
 final.onclick = () => {
@@ -253,30 +292,53 @@ final.onclick = () => {
 
   if (state.revealIndex < total - 2) {
     const r = state.sortedResults[state.revealIndex];
-    const rank = total - state.revealIndex;
 
-    const div = document.createElement("div");
+    const rank =
+      total - state.revealIndex;
+
+    const div =
+      document.createElement("div");
+
     div.classList.add("result-item");
-    div.innerHTML = `${rank}. ${r.host} — ${r.total}/30 ⭐`;
+
+    div.innerHTML =
+      `${rank}. ${r.host} — ${r.total}/30 ⭐`;
 
     leaderboard.appendChild(div);
-    setTimeout(() => div.classList.add("show"), 50);
+
+    setTimeout(() => {
+      div.classList.add("show");
+    }, 50);
 
     state.revealIndex++;
+
+    saveState();
+
     return;
   }
 
   if (state.revealIndex === total - 2) {
-    const second = state.sortedResults[total - 2];
-    const first = state.sortedResults[total - 1];
+    const second =
+      state.sortedResults[total - 2];
 
-    const secondDiv = document.createElement("div");
+    const first =
+      state.sortedResults[total - 1];
+
+    const secondDiv =
+      document.createElement("div");
+
     secondDiv.classList.add("result-item");
-    secondDiv.innerHTML = `2. ${second.host} — ${second.total}/30 ⭐`;
 
-    const firstDiv = document.createElement("div");
+    secondDiv.innerHTML =
+      `2. ${second.host} — ${second.total}/30 ⭐`;
+
+    const firstDiv =
+      document.createElement("div");
+
     firstDiv.classList.add("result-item");
-    firstDiv.innerHTML = `1. ${first.host} — ${first.total}/30 ⭐`;
+
+    firstDiv.innerHTML =
+      `1. ${first.host} — ${first.total}/30 ⭐`;
 
     leaderboard.appendChild(secondDiv);
     leaderboard.appendChild(firstDiv);
@@ -287,15 +349,22 @@ final.onclick = () => {
     }, 50);
 
     setTimeout(() => {
-      const w = document.createElement("div");
-      w.classList.add("winner");
-      w.textContent = `🏆 WINNER: ${first.host}`;
-      leaderboard.appendChild(w);
+      const winner =
+        document.createElement("div");
+
+      winner.classList.add("winner");
+
+      winner.textContent =
+        `🏆 WINNER: ${first.host}`;
+
+      leaderboard.appendChild(winner);
 
       launchConfetti();
     }, 400);
 
     state.revealIndex = total;
+
+    saveState();
   }
 };
 
@@ -304,17 +373,29 @@ function launchConfetti() {
   const end = Date.now() + duration;
 
   (function frame() {
-    confetti({ particleCount: 15, angle: 60, spread: 90, origin: { x: 0, y: 0.6 } });
-    confetti({ particleCount: 15, angle: 120, spread: 90, origin: { x: 1, y: 0.6 } });
-    confetti({ particleCount: 20, spread: 120, origin: { x: 0.5, y: 0.5 } });
     confetti({
-      particleCount: 10,
-      angle: Math.random() * 360,
-      spread: 100,
-      origin: { x: Math.random(), y: Math.random() * 0.6 }
+      particleCount: 15,
+      angle: 60,
+      spread: 90,
+      origin: { x: 0, y: 0.6 }
     });
 
-    if (Date.now() < end) requestAnimationFrame(frame);
+    confetti({
+      particleCount: 15,
+      angle: 120,
+      spread: 90,
+      origin: { x: 1, y: 0.6 }
+    });
+
+    confetti({
+      particleCount: 20,
+      spread: 120,
+      origin: { x: 0.5, y: 0.5 }
+    });
+
+    if (Date.now() < end) {
+      requestAnimationFrame(frame);
+    }
   })();
 }
 
@@ -323,15 +404,34 @@ function resetGame() {
   location.reload();
 }
 
-/* restore only if mid-game */
 function restoreUI() {
-  if (state.currentHostIndex < state.hostsQueue.length && state.hostsQueue.length > 0) {
-    setup.style.display = "none";
-    game.style.display = "block";
-    hostDisplay.textContent =
-      `🍽️ Hosting: ${state.hostsQueue[state.currentHostIndex]}`;
-    renderTurn();
+  if (!state.hostsQueue.length) {
+    return;
   }
+
+  if (
+    state.currentHostIndex >=
+    state.hostsQueue.length
+  ) {
+    setup.style.display = "none";
+    game.style.display = "none";
+    revealBtnWrap.style.display = "block";
+    return;
+  }
+
+  const host =
+    state.hostsQueue[state.currentHostIndex];
+
+  state.voters =
+    teams.filter(t => t !== host);
+
+  setup.style.display = "none";
+  game.style.display = "block";
+
+  hostDisplay.textContent =
+    `🍽️ Hosting: ${host}`;
+
+  renderTurn();
 }
 
 startBtn.onclick = startGame;
@@ -341,16 +441,25 @@ resetBtn.onclick = resetGame;
 
 score.oninput = () => {
   const val = parseInt(score.value);
-  submitBtn.disabled = !(val >= 1 && val <= 10);
+
+  submitBtn.disabled =
+    !(val >= 1 && val <= 10);
 };
 
 score.onkeypress = e => {
-  if (e.key === "Enter" && !submitBtn.disabled) submitScore();
+  if (
+    e.key === "Enter" &&
+    !submitBtn.disabled
+  ) {
+    submitScore();
+  }
 };
 
-loadState();
-restoreUI();
+if (loadState()) {
+  restoreUI();
+}
 </script>
+
 
 </body>
 </html>
